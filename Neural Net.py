@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OrdinalEncoder
 from keras.utils import to_categorical
 from sklearn.model_selection import StratifiedKFold
 import tensorflow as tf
@@ -23,28 +24,6 @@ def load_data():
     
     # Clean Messy Values
     df = df.replace('?', np.NaN)
-    df = df.replace('f', False)
-    df = df.replace('t', True)
-    df = df.replace('negative', False)
-    df = df.replace('sick', True)
-    df = df[pd.notnull(df['sex'])]
-    
-    # OneHotEncoder Instance
-    enc = OneHotEncoder(handle_unknown='ignore')
-    
-    # One Hot Encode for Category Columns
-    sexCode = pd.DataFrame(enc.fit_transform(df[['sex']]).toarray())
-    refCode = pd.DataFrame(enc.fit_transform(df[['referral source']]).toarray())
-    
-    # Change Column Names, Join DF's, and Drop Old Columns
-    sexCode.columns = ['Female', 'Male']
-    refCode.columns = ['STMW', 'SVHC', 'SVHD', 'SVI', 'other']
-    df = pd.concat([df, sexCode, refCode], axis = 1)
-    df = df.drop('sex', 1)
-    df = df.drop('referral source', 1)
-    
-    # Check dtypes
-    df.dtypes
     
     # Fix Data Types
     df.age = pd.to_numeric(df.age)
@@ -53,16 +32,6 @@ def load_data():
     df.TT4 = pd.to_numeric(df.TT4)
     df.T4U = pd.to_numeric(df.T4U)
     df.FTI = pd.to_numeric(df.FTI)
-    
-    # Fix Data Types for Newer Columns
-    df.STMW = df.STMW.replace(0, False).replace(1, True)
-    df.SVHC = df.SVHC.replace(0, False).replace(1, True)
-    df.SVHD = df.SVHD.replace(0, False).replace(1, True)
-    df.SVI = df.SVI.replace(0, False).replace(1, True)
-    df.other = df.other.replace(0, False).replace(1, True)
-    df.Female = df.Female.replace(0, False).replace(1, True)
-    df.Male = df.Male.replace(0, False).replace(1, True)
-    
     
     # Imputation for Missing Values
     numericals = ['age','TSH', 'T3', 'TT4', 'T4U', 'FTI']
@@ -81,26 +50,35 @@ def load_data():
     
     # Get Features and Target into Array for Neural Net
     features = newDF.drop('Class', axis = 1).values
+    ohe = OneHotEncoder(handle_unknown='ignore')
+    ohe.fit(features)
+    features = ohe.transform(features).toarray()
     target = newDF.Class.values
+    oe = OrdinalEncoder()
+    oe.fit(target)
+    target = oe.transform(target)
+    target = to_categorical(target)
     return(features, target, newDF)
 
 def create_model():
     # Build Neural Net
     model = keras.Sequential([
-        keras.layers.Dense(100, activation='relu', input_shape = features.shape[1]),
+        keras.layers.Dense(100, activation='relu', input_dim = features.shape[1]),
         keras.layers.Dense(2, activation = 'softmax')
         ])
     # Specify Loss/Metric Functions
-    model.compile(optimizer='rmsprop', loss="categorical_crossentropy", metrics=[tf.keras.metrics.AUC()])
+    model.compile(optimizer='adam', loss="categorical_crossentropy", metrics=[tf.keras.metrics.AUC()])
     return(model)
 
-def train_and_evaluate__model(model, xTrain, yTrain, xTest, yTest):
+def train_and_evaluate_model(model, xTrain, yTrain, xTest, yTest):
     
     # Train Model
     modelFit = model.fit(xTrain, yTrain, epochs = 100)
     
     # Evaluate Model
-    modelEval = model.evaluate(xTest, yTest)
+    modelEval = modelFit.evaluate(xTest, yTest)
+    
+    return(modelEval)
 
 if __name__ == "__main__":
     auc = []
@@ -110,7 +88,7 @@ if __name__ == "__main__":
 
     for i, (train, test) in enumerate(skf.split(features, newDF['Class'])):
             print("Running Fold", i+1, "/", n_folds)
-            model = None # Clearing the NN.
+            model = None
             model = create_model()
             train_and_evaluate_model(model, features[train], target[train], features[test], target[test])
             auc.append(modelEval[1])
