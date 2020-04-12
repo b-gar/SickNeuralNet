@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.preprocessing import OrdinalEncoder
 from keras.utils import to_categorical
 from sklearn.model_selection import StratifiedKFold
 import tensorflow as tf
@@ -17,22 +16,30 @@ from tensorflow import keras
 def load_data():
     # Read in Data
     df = pd.read_csv('C:/Users/Owner/OneDrive - UWM/Spring 2020/COMPSCI 657/sick.csv')
-    
+    return(df)
+
+def clean_data(df):
     # Drop Column with all nan and Rows with Mainly nan
     df = df.drop('TBG', axis=1)
     df = df.dropna(thresh=(len(df.columns)/2))
     
     # Clean Messy Values
     df = df.replace('?', np.NaN)
+    df = df.replace('f', 0)
+    df = df.replace('t', 1)
+    df = df.replace('negative', 0)
+    df = df.replace('sick', 1)
     
-    # Fix Data Types
+    # Fix Data Types for Imputation
     df.age = pd.to_numeric(df.age)
     df.TSH = pd.to_numeric(df.TSH)
     df.T3 = pd.to_numeric(df.T3)
     df.TT4 = pd.to_numeric(df.TT4)
     df.T4U = pd.to_numeric(df.T4U)
     df.FTI = pd.to_numeric(df.FTI)
-    
+    return(df)
+
+def impute_data(df):    
     # Imputation for Missing Values
     numericals = ['age','TSH', 'T3', 'TT4', 'T4U', 'FTI']
     catImpDF = df.drop(numericals, axis = 1)
@@ -46,28 +53,42 @@ def load_data():
     numImpDFTransformed = pd.DataFrame(numImp.fit_transform(numImpDF))
     numImpDFTransformed.columns = numImpDF.columns
     
-    newDF = pd.concat([catImpDFTransformed, numImpDFTransformed], axis = 1)
+    dfnew = pd.concat([catImpDFTransformed, numImpDFTransformed], axis = 1)
+    return(dfnew)
+
+def onehotencode_data(df):
+    # OneHotEncoder Instance
+    enc = OneHotEncoder(handle_unknown='ignore')
     
+    # One Hot Encode for Category Columns
+    sexCode = pd.DataFrame(enc.fit_transform(df[['sex']]).toarray())
+    refCode = pd.DataFrame(enc.fit_transform(df[['referral source']]).toarray())
+
+    # Change Column Names, Join DF's, and Drop Old Columns
+    sexCode.columns = ['Female', 'Male']
+    refCode.columns = ['STMW', 'SVHC', 'SVHD', 'SVI', 'other']
+    newDF = pd.concat([df, sexCode, refCode], axis = 1)
+    newDF = newDF.drop('sex', 1)
+    newDF = newDF.drop('referral source', 1)
+    return(newDF)
+
+def getxy(df):
     # Get Features and Target into Array for Neural Net
-    features = newDF.drop('Class', axis = 1).values
+    features = df.drop('Class', axis = 1).values
     ohe = OneHotEncoder(handle_unknown='ignore')
     ohe.fit(features)
     features = ohe.transform(features).toarray()
-    target = newDF.Class.values
-    oe = OrdinalEncoder()
-    oe.fit(target)
-    target = oe.transform(target)
-    target = to_categorical(target)
-    return(features, target, newDF)
+    target = df.Class.values
+    return(features, target, df)
 
-def create_model():
+def create_model(train):
     # Build Neural Net
     model = keras.Sequential([
-        keras.layers.Dense(100, activation='relu', input_dim = features.shape[1]),
+        keras.layers.Dense(100, activation='relu', input_dim = train.shape[1]),
         keras.layers.Dense(2, activation = 'softmax')
         ])
     # Specify Loss/Metric Functions
-    model.compile(optimizer='adam', loss="categorical_crossentropy", metrics=[tf.keras.metrics.AUC()])
+    model.compile(optimizer='adam', loss="binary_crossentropy", metrics=[tf.keras.metrics.AUC()])
     return(model)
 
 def train_and_evaluate_model(model, xTrain, yTrain, xTest, yTest):
