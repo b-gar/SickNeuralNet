@@ -70,47 +70,52 @@ def onehotencode_data(df):
     newDF = pd.concat([df, sexCode, refCode], axis = 1)
     newDF = newDF.drop('sex', 1)
     newDF = newDF.drop('referral source', 1)
+    
+    newDF = newDF.iloc[:,:21].astype(int)
     return(newDF)
 
 def getxy(df):
     # Get Features and Target into Array for Neural Net
     features = df.drop('Class', axis = 1).values
-    ohe = OneHotEncoder(handle_unknown='ignore')
-    ohe.fit(features)
-    features = ohe.transform(features).toarray()
     target = df.Class.values
     return(features, target, df)
 
-def create_model(train):
+def create_model(trainArray):
     # Build Neural Net
     model = keras.Sequential([
-        keras.layers.Dense(100, activation='relu', input_dim = train.shape[1]),
-        keras.layers.Dense(2, activation = 'softmax')
+        keras.layers.Dense(100, activation='relu', input_dim = trainArray.shape[1]),
+        keras.layers.Dense(1, activation = 'hard_sigmoid')
         ])
     # Specify Loss/Metric Functions
-    model.compile(optimizer='adam', loss="binary_crossentropy", metrics=[tf.keras.metrics.AUC()])
+    model.compile(optimizer='rmsprop', loss="binary_crossentropy", metrics=[tf.keras.metrics.AUC()])
     return(model)
 
-def train_and_evaluate_model(model, xTrain, yTrain, xTest, yTest):
+def train_eval_model(model, xTrain, yTrain, xTest, yTest):
     
     # Train Model
     modelFit = model.fit(xTrain, yTrain, epochs = 100)
     
     # Evaluate Model
-    modelEval = modelFit.evaluate(xTest, yTest)
-    
+    modelEval = model.evaluate(xTest, yTest)
     return(modelEval)
 
+# Main Block
 if __name__ == "__main__":
-    auc = []
-    n_folds = 10
-    features, target, newDF = load_data()
-    skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state = 24)
 
-    for i, (train, test) in enumerate(skf.split(features, newDF['Class'])):
-            print("Running Fold", i+1, "/", n_folds)
-            model = None
-            model = create_model()
-            train_and_evaluate_model(model, features[train], target[train], features[test], target[test])
-            auc.append(modelEval[1])
-            print("AUC: ", modelEval[1])
+    data1 = load_data()
+    data2 = clean_data(data1)
+    data3 = impute_data(data2)
+    data4 = onehotencode_data(data3)
+    features, target, finalDF = getxy(data4)
+    
+    nfolds = 10
+    skf = StratifiedKFold(n_splits = nfolds, shuffle = True, random_state = 24)
+    auc = []
+    
+    for i, (train, test) in enumerate(skf.split(features, target)):
+        print('Fold ', i+1, '/', nfolds)
+        model = None
+        model = create_model(features[train])
+        fitModel = train_eval_model(model, features[train], target[train], features[test], target[test])
+        auc.append(fitModel[1])
+        print("Average AUC: ", fitModel[1])
