@@ -93,7 +93,7 @@ def create_model(trainArray):
 def train_eval_model(model, xTrain, yTrain, xTest, yTest):
     
     # Train Model
-    modelFit = model.fit(xTrain, yTrain, epochs = 100)
+    model.fit(xTrain, yTrain, epochs = 100)
     
     # Evaluate Model
     modelEval = model.evaluate(xTest, yTest)
